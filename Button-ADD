@@ -1,0 +1,802 @@
+Option Explicit
+
+' ----------------------------------------------------------------------------------
+' Eventos de Label (vacíos)
+' ----------------------------------------------------------------------------------
+Private Sub Label3_Click()
+End Sub
+
+Private Sub Label4_Click()
+End Sub
+
+Private Sub Label5_Click()
+End Sub
+
+Private Sub Label7_Click()
+End Sub
+
+Private Sub Label9_Click()
+End Sub
+
+' ----------------------------------------------------------------------------------
+' (1) Al cargar el formulario (Initialize)
+' ----------------------------------------------------------------------------------
+Private Sub UserForm_Initialize()
+    ' Valores por defecto
+    optGasto.Value = True
+    optPersonal.Value = True
+    
+    ' Pon la fecha actual en el TextBox
+    txtFecha.Value = Format(Date, "dd/mm/yyyy")
+    
+    ' Ocultar controles de Empresa (por defecto inicia Personal)
+    MostrarOcultarControles
+    
+    ' Cargar las categorías iniciales
+    LlenarComboCategoria
+End Sub
+
+' ----------------------------------------------------------------------------------
+' (2) Cambios en OptionButtons (Gasto/Ingreso/Personal/Empresa)
+' ----------------------------------------------------------------------------------
+Private Sub optGasto_Click()
+    LlenarComboCategoria
+End Sub
+
+Private Sub optIngreso_Click()
+    LlenarComboCategoria
+End Sub
+
+Private Sub optPersonal_Click()
+    MostrarOcultarControles
+    LlenarComboCategoria
+End Sub
+
+Private Sub optEmpresa_Click()
+    MostrarOcultarControles
+    LlenarComboCategoria
+End Sub
+
+' ----------------------------------------------------------------------------------
+' Mostrar u ocultar controles de empresa vs. personal
+' ----------------------------------------------------------------------------------
+Private Sub MostrarOcultarControles()
+    ' Si es Personal => mostrar solo Fecha, Precio Total, Descripción
+    ' Si es Empresa => mostrar también Precio sin IVA, %IVA, %afectado
+    If optPersonal.Value Then
+        ' Oculta controles de empresa
+        lblPrecioSinIVA.Visible = False
+        txtPrecioSinIVA.Visible = False
+        lblIVA.Visible = False
+        txtIVA.Visible = False
+        lblPorcAfectado.Visible = False
+        txtPorcAfectado.Visible = False
+    Else
+        ' Muestra controles de empresa
+        lblPrecioSinIVA.Visible = True
+        txtPrecioSinIVA.Visible = True
+        lblIVA.Visible = True
+        txtIVA.Visible = True
+        lblPorcAfectado.Visible = True
+        txtPorcAfectado.Visible = True
+    End If
+End Sub
+
+' ----------------------------------------------------------------------------------
+' (3) Cargar Categorías y Subcategorías
+' ----------------------------------------------------------------------------------
+Private Sub LlenarComboCategoria()
+    cboCategoria.Clear
+    
+    Dim wsCat As Worksheet
+    Set wsCat = ThisWorkbook.Worksheets("CATEGORY")
+    
+    ' Ajusta el nombre de la tabla si no se llama "tblCategory"
+    Dim loCat As ListObject
+    Set loCat = wsCat.ListObjects("tblCategory")
+    
+    If loCat.DataBodyRange Is Nothing Then Exit Sub ' tabla vacía
+    
+    Dim strTipo As String, strContexto As String
+    If optGasto.Value Then
+        strTipo = "Gasto"
+    Else
+        strTipo = "Ingreso"
+    End If
+    
+    If optPersonal.Value Then
+        strContexto = "Personal"
+    Else
+        strContexto = "Empresa"
+    End If
+    
+    Dim rng As Range
+    Set rng = loCat.DataBodyRange
+    
+    Dim i As Long
+    For i = 1 To rng.Rows.Count
+        ' Columnas: 1=Tipo, 2=Contexto, 3=Categoría, 4=Subcategoría
+        If rng.Cells(i, 1).Value = strTipo _
+           And rng.Cells(i, 2).Value = strContexto Then
+           
+            Dim sCat As String
+            sCat = rng.Cells(i, 3).Value
+            
+            ' Evitamos duplicados en el ComboBox
+            If Not ExisteEnCombo(cboCategoria, sCat) Then
+                cboCategoria.AddItem sCat
+            End If
+        End If
+    Next i
+    
+    Set rng = Nothing
+    Set loCat = Nothing
+    Set wsCat = Nothing
+End Sub
+
+' ----------------------------------------------------------------------------------
+' Comprobar si un valor existe en el combo
+' ----------------------------------------------------------------------------------
+Private Function ExisteEnCombo(cbo As ComboBox, valor As String) As Boolean
+    Dim idx As Long
+    For idx = 0 To cbo.ListCount - 1
+        If cbo.List(idx) = valor Then
+            ExisteEnCombo = True
+            Exit Function
+        End If
+    Next idx
+    ExisteEnCombo = False
+End Function
+
+' ----------------------------------------------------------------------------------
+' Al actualizar la categoría, cargar subcategorías
+' ----------------------------------------------------------------------------------
+Private Sub cboCategoria_AfterUpdate()
+    cboSubcategoria.Clear
+    
+    If cboCategoria.Value = "" Then Exit Sub
+    
+    Dim wsCat As Worksheet
+    Set wsCat = ThisWorkbook.Worksheets("CATEGORY")
+    
+    Dim loCat As ListObject
+    Set loCat = wsCat.ListObjects("tblCategory")
+    
+    If loCat.DataBodyRange Is Nothing Then Exit Sub
+    
+    Dim rng As Range
+    Set rng = loCat.DataBodyRange
+    
+    Dim strTipo As String, strContexto As String
+    If optGasto.Value Then
+        strTipo = "Gasto"
+    Else
+        strTipo = "Ingreso"
+    End If
+    
+    If optPersonal.Value Then
+        strContexto = "Personal"
+    Else
+        strContexto = "Empresa"
+    End If
+    
+    Dim i As Long
+    For i = 1 To rng.Rows.Count
+        If rng.Cells(i, 1).Value = strTipo _
+           And rng.Cells(i, 2).Value = strContexto _
+           And rng.Cells(i, 3).Value = cboCategoria.Value Then
+           
+            Dim sSub As String
+            sSub = rng.Cells(i, 4).Value
+            
+            If sSub <> "" Then
+                If Not ExisteEnCombo(cboSubcategoria, sSub) Then
+                    cboSubcategoria.AddItem sSub
+                End If
+            End If
+        End If
+    Next i
+    
+    Set rng = Nothing
+    Set loCat = Nothing
+    Set wsCat = Nothing
+End Sub
+
+' ----------------------------------------------------------------------------------
+' (4) Detectar si la Categoría o Subcategoría no existe y crearla al salir del combo
+' ----------------------------------------------------------------------------------
+'Private Sub cboCategoria_Exit(ByVal Cancel As MSForms.ReturnBoolean)
+'    If cboCategoria.ListIndex = -1 And cboCategoria.Value <> "" Then
+'        Dim resp As VbMsgBoxResult
+'        resp = MsgBox("La categoría [" & cboCategoria.Value & "] no existe. ¿Desea crearla?", vbYesNo + vbQuestion)
+'        If resp = vbYes Then
+'            CrearNuevaCatOsubcat True, cboCategoria.Value
+'        End If
+'    End If
+'End Sub '
+
+Private Sub cboSubcategoria_Exit(ByVal Cancel As MSForms.ReturnBoolean)
+    If cboSubcategoria.Value = "" Then Exit Sub
+    
+    ' 1. Detectar si la combinación (Categoria, Subcategoria) ya existe
+    If ExisteCombinacionCategoriaSubCat(cboCategoria.Value, cboSubcategoria.Value) Then
+        ' Ya existe, no hacemos nada
+        Exit Sub
+    End If
+    
+    ' 2. Como no existe la pareja (Cat, SubCat), preguntamos:
+    Dim resp As VbMsgBoxResult
+    resp = MsgBox("La subcategoría [" & cboSubcategoria.Value & "] para la categoría [" & cboCategoria.Value & "] no existe. ¿Deseas crear ambas?", vbYesNo + vbQuestion)
+    If resp = vbYes Then
+        ' Creamos UNA sola fila con la cat y la subcat, sin pasar por la creación de cat vacío
+        CrearNuevaCategoriaYSubcategoria cboCategoria.Value, cboSubcategoria.Value
+    End If
+End Sub
+Private Function ExisteCombinacionCategoriaSubCat( _
+    ByVal sCat As String, ByVal sSub As String) As Boolean
+    
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Worksheets("CATEGORY")
+    
+    Dim loCat As ListObject
+    Set loCat = ws.ListObjects("tblCategory")
+    
+    If loCat.DataBodyRange Is Nothing Then
+        ExisteCombinacionCategoriaSubCat = False
+        Exit Function
+    End If
+    
+    Dim rng As Range
+    Set rng = loCat.DataBodyRange
+    
+    Dim i As Long
+    For i = 1 To rng.Rows.Count
+        If rng.Cells(i, 1).Value = IIf(optGasto.Value, "Gasto", "Ingreso") _
+           And rng.Cells(i, 2).Value = IIf(optPersonal.Value, "Personal", "Empresa") _
+           And rng.Cells(i, 3).Value = sCat _
+           And rng.Cells(i, 4).Value = sSub Then
+               
+            ExisteCombinacionCategoriaSubCat = True
+            Exit For
+        End If
+    Next i
+End Function
+Private Sub CrearNuevaCategoriaYSubcategoria(ByVal sCat As String, ByVal sSub As String)
+    Dim wsCat As Worksheet
+    Set wsCat = ThisWorkbook.Worksheets("CATEGORY")
+    
+    Dim loCat As ListObject
+    Set loCat = wsCat.ListObjects("tblCategory")
+    
+    ' Caso: la tabla está vacía
+    If loCat.DataBodyRange Is Nothing Then
+        loCat.ListRows.Add
+        ' Llenar la fila 1
+        loCat.DataBodyRange.Cells(1, 1).Value = IIf(optGasto.Value, "Gasto", "Ingreso")
+        loCat.DataBodyRange.Cells(1, 2).Value = IIf(optPersonal.Value, "Personal", "Empresa")
+        loCat.DataBodyRange.Cells(1, 3).Value = sCat
+        loCat.DataBodyRange.Cells(1, 4).Value = sSub
+    Else
+        ' Añadir nueva fila al final
+        Dim lr As ListRow
+        Set lr = loCat.ListRows.Add
+        
+        With lr.Range
+            .Cells(1, 1).Value = IIf(optGasto.Value, "Gasto", "Ingreso")
+            .Cells(1, 2).Value = IIf(optPersonal.Value, "Personal", "Empresa")
+            .Cells(1, 3).Value = sCat
+            .Cells(1, 4).Value = sSub
+        End With
+    End If
+    
+    ' Actualizar combos
+    LlenarComboCategoria
+    
+    ' Seleccionar en cboCategoria y cboSubcategoria lo que acabamos de crear
+    cboCategoria.Value = sCat
+    cboSubcategoria.Clear
+    cboSubcategoria.AddItem sSub
+    cboSubcategoria.Value = sSub
+    
+    Set loCat = Nothing
+    Set wsCat = Nothing
+End Sub
+
+
+
+' ----------------------------------------------------------------------------------
+' Crear nueva Categoría o Subcategoría en la hoja CATEGORY
+' ----------------------------------------------------------------------------------
+Private Sub CrearNuevaCatOsubcat(ByVal esCategoria As Boolean, ByVal strNuevo As String)
+    Dim wsCat As Worksheet
+    Set wsCat = ThisWorkbook.Worksheets("CATEGORY")
+    
+    Dim loCat As ListObject
+    Set loCat = wsCat.ListObjects("tblCategory")
+    
+    If loCat.DataBodyRange Is Nothing Then
+        ' No hay filas, se añade la primera
+        loCat.ListRows.Add
+        ' Llenar Tipo y Contexto con los OptionButtons
+        loCat.DataBodyRange.Cells(1, 1).Value = IIf(optGasto.Value, "Gasto", "Ingreso")
+        loCat.DataBodyRange.Cells(1, 2).Value = IIf(optPersonal.Value, "Personal", "Empresa")
+        
+        If esCategoria Then
+            ' *** NUEVA CATEGORÍA ***
+            loCat.DataBodyRange.Cells(1, 3).Value = strNuevo        ' Categoría
+            loCat.DataBodyRange.Cells(1, 4).Value = ""              ' Subcategoría vacía
+        Else
+            ' *** NUEVA SUBCATEGORÍA ***
+            ' Associar a la categoría ACTUAL del combo
+            loCat.DataBodyRange.Cells(1, 3).Value = cboCategoria.Value
+            loCat.DataBodyRange.Cells(1, 4).Value = strNuevo
+        End If
+        
+    Else
+        ' Añadir nueva fila al final
+        Dim lr As ListRow
+        Set lr = loCat.ListRows.Add
+        
+        With lr.Range
+            .Cells(1, 1).Value = IIf(optGasto.Value, "Gasto", "Ingreso")    ' Tipo
+            .Cells(1, 2).Value = IIf(optPersonal.Value, "Personal", "Empresa") ' Contexto
+            
+            If esCategoria Then
+                ' *** NUEVA CATEGORÍA ***
+                .Cells(1, 3).Value = strNuevo
+                .Cells(1, 4).Value = ""
+            Else
+                ' *** NUEVA SUBCATEGORÍA ***
+                .Cells(1, 3).Value = cboCategoria.Value  ' la categoría que tengamos
+                .Cells(1, 4).Value = strNuevo
+            End If
+        End With
+    End If
+    
+    ' Actualizar combos
+    LlenarComboCategoria
+    
+    ' Si se acaba de crear una categoría, la ponemos en cboCategoria
+    If esCategoria Then
+        cboCategoria.Value = strNuevo
+        cboSubcategoria.Clear
+    Else
+        ' Se acaba de crear una subcategoría
+        ' *** Añadirla y seleccionarla en cboSubcategoria
+        cboSubcategoria.AddItem strNuevo
+        cboSubcategoria.Value = strNuevo
+    End If
+    
+    Set loCat = Nothing
+    Set wsCat = Nothing
+End Sub
+
+
+' ----------------------------------------------------------------------------------
+' (5) Botón Guardar: Inserta en DB o DBE
+' ----------------------------------------------------------------------------------
+Private Sub cmdGuardar_Click()
+
+    ' Recolectamos datos del formulario
+    Dim dFecha As Date
+    dFecha = CDate(txtFecha.Value)
+    
+    Dim sCat As String
+    sCat = cboCategoria.Value
+    
+    Dim sSub As String
+    sSub = cboSubcategoria.Value
+    
+    ' Variables que no estaban declaradas
+    Dim sSubCat As String
+    sSubCat = sSub   ' Lo igualamos a sSub
+    
+    Dim sProveedor As String
+    sProveedor = txtProveedor.Value
+    
+    Dim sDesc As String
+    sDesc = txtDescripcion.Value
+    
+    Dim factorSigno As Currency
+    If optGasto.Value Then
+        factorSigno = -1
+    Else
+        factorSigno = 1
+    End If
+    
+    ' Convertir valores de TextBox a Currency/Single
+    Dim cPrecioTotal As Currency
+    Dim cPrecioSinIVA As Currency
+    Dim sngIVA As Single
+    Dim sngAfectado As Single
+    
+    ' (1) Precio Total (Personal)
+    cPrecioTotal = ConvertirDecimal(txtPrecioTotal) * factorSigno
+    
+    ' (2) Precio Sin IVA (Empresa)
+    cPrecioSinIVA = ConvertirDecimal(txtPrecioSinIVA) * factorSigno
+    
+    ' (3) IVA
+    Dim valorIVA As Single
+    valorIVA = ConvertirDecimal(txtIVA)   ' si escribe "21", valorIVA=21
+    sngIVA = valorIVA / 100               ' => 0.21
+    
+    ' (4) %afectado
+    Dim valorAfectado As Single
+    valorAfectado = ConvertirDecimal(txtPorcAfectado) ' si escribe 70 => 70
+    If valorAfectado = 0 Then valorAfectado = 100     ' por defecto si está vacío
+    sngAfectado = valorAfectado / 100                ' => 0.70
+    
+    ' Decidimos si es Personal o Empresa
+    If optPersonal.Value Then
+        ' ============== GUARDAR EN DB (Personal) ==============
+        Dim wsDB As Worksheet
+        Set wsDB = ThisWorkbook.Worksheets("DB")
+        
+        Dim loDB As ListObject
+        Set loDB = wsDB.ListObjects("tblDB")
+        
+        Dim lr As ListRow
+        Set lr = loDB.ListRows.Add
+        
+        ' Orden en DB: FECHA, CATEGORÍA, SUBCATEGORÍA, PROVEEDOR, PRECIO, DESCRIPCIÓN
+        With lr.Range
+            .Cells(1, 1).Value = dFecha
+            .Cells(1, 2).Value = sCat
+            .Cells(1, 3).Value = sSub
+            .Cells(1, 4).Value = sProveedor
+            .Cells(1, 5).Value = cPrecioTotal
+            .Cells(1, 6).Value = sDesc
+        End With
+        
+        MsgBox "Transacción (Personal) guardada.", vbInformation
+        
+    Else
+        ' ============== GUARDAR EN DBE (Empresa) ==============
+        Dim wsDBE As Worksheet
+        Set wsDBE = ThisWorkbook.Worksheets("DBE")
+        
+        Dim loDBE As ListObject
+        Set loDBE = wsDBE.ListObjects("tblDBE")
+        
+        ' Cálculo de IVA y total
+        Dim cIVA As Currency
+        cIVA = cPrecioSinIVA * sngIVA
+        
+        Dim cTotal As Currency
+        cTotal = cPrecioSinIVA + cIVA
+        
+        ' Generar la referencia
+        Dim sRef As String
+        sRef = GenerarReferencia(sSub)  ' sSub es la subcategoría elegida
+        
+        ' Insertar la PRIMERA línea (afectado)
+        Dim lrEmp As ListRow
+        Set lrEmp = loDBE.ListRows.Add
+        
+        Dim cPrecioAfectado As Currency
+        cPrecioAfectado = cPrecioSinIVA * sngAfectado
+        
+        Dim cIVAAfectado As Currency
+        cIVAAfectado = cPrecioAfectado * sngIVA
+        
+        Dim cTotalAfectado As Currency
+        cTotalAfectado = cPrecioAfectado + cIVAAfectado
+        
+        With lrEmp.Range
+            ' FECHA, REFERENCIA, CATEGORÍA, PROVEEDOR,
+            ' PRECIO SIN IVA, %IVA, €IVA, PRECIO TOTAL, %afectado, DESCRIPCIÓN
+            .Cells(1, 1).Value = dFecha
+            .Cells(1, 2).Value = sRef
+            .Cells(1, 3).Value = sCat
+            .Cells(1, 4).Value = sProveedor
+            .Cells(1, 5).Value = cPrecioAfectado
+            .Cells(1, 6).Value = sngIVA           ' 0.21 => 21%
+            .Cells(1, 7).Value = cIVAAfectado
+            .Cells(1, 8).Value = cTotalAfectado
+            .Cells(1, 9).Value = sngAfectado      ' 0.70 => 70%
+            .Cells(1, 10).Value = sDesc
+        End With
+        
+        ' Poner la referencia en rojo
+        lrEmp.Range.Cells(1, 2).Font.Color = vbRed
+        
+        ' Si sngAfectado < 1 => segunda línea
+        If sngAfectado < 1 Then
+            Dim sngRestante As Single
+            sngRestante = 1 - sngAfectado
+            
+            Dim cPrecioRest As Currency
+            cPrecioRest = cPrecioSinIVA * sngRestante
+            
+            Dim cIVARest As Currency
+            cIVARest = cPrecioRest * sngIVA
+            
+            Dim cTotalRest As Currency
+            cTotalRest = cPrecioRest + cIVARest
+            
+            Dim lrEmp2 As ListRow
+            Set lrEmp2 = loDBE.ListRows.Add
+            
+            With lrEmp2.Range
+                .Cells(1, 1).Value = dFecha
+                .Cells(1, 2).Value = sRef
+                .Cells(1, 3).Value = ""    ' Categoría en blanco
+                .Cells(1, 4).Value = sProveedor
+                .Cells(1, 5).Value = cPrecioRest
+                .Cells(1, 6).Value = sngIVA
+                .Cells(1, 7).Value = cIVARest
+                .Cells(1, 8).Value = cTotalRest
+                .Cells(1, 9).Value = sngRestante
+                .Cells(1, 10).Value = sDesc & " (restante)"
+            End With
+        End If
+        
+        MsgBox "Transacción (Empresa) guardada.", vbInformation
+        
+    End If
+    
+    ' Si se marca el CheckBox Mensual, generamos las lineas mensuales
+    If chkMensual.Value = True Then
+        Call GenerarMensualidadesDBE(dFecha, sSubCat, sCat, sProveedor, cPrecioSinIVA, sngIVA, sngAfectado, sDesc)
+    End If
+    
+    Me.Hide ' Ocultamos el formulario
+End Sub
+
+' ----------------------------------------------------------------------------------
+' Cancelar la Mensualidad (botón)
+' ----------------------------------------------------------------------------------
+Private Sub cmdCancelarMensual_Click()
+    Dim sCat As String
+    sCat = cboCategoria.Value
+    
+    Dim sSub As String
+    sSub = cboSubcategoria.Value
+    
+    Dim sProv As String
+    sProv = txtProveedor.Value
+    
+    Dim wsDBE As Worksheet
+    Set wsDBE = ThisWorkbook.Worksheets("DBE")
+    
+    Dim loDBE As ListObject
+    Set loDBE = wsDBE.ListObjects("tblDBE")
+    
+    If loDBE.DataBodyRange Is Nothing Then
+        MsgBox "No hay filas en DBE.", vbInformation
+        Exit Sub
+    End If
+    
+    Dim i As Long
+    Dim ultimaFila As Long
+    ultimaFila = loDBE.DataBodyRange.Rows.Count
+    
+    ' Recorremos de abajo hacia arriba
+    For i = ultimaFila To 1 Step -1
+        Dim rngRow As Range
+        Set rngRow = loDBE.DataBodyRange.Rows(i)
+        
+        ' Columnas en DBE: 1=Fecha, 2=Referencia, 3=Categoría, 4=Proveedor, ...
+        Dim dFecha As Date
+        dFecha = rngRow.Cells(1, 1).Value
+        
+        Dim sCatRow As String
+        sCatRow = rngRow.Cells(1, 3).Value
+        
+        Dim sProvRow As String
+        sProvRow = rngRow.Cells(1, 4).Value
+        
+        Dim sDescRow As String
+        sDescRow = rngRow.Cells(1, 10).Value  ' Descripción
+        
+        ' Borrar si es futuro, coincide Cat/Prov y la descripción contiene "(mensual)"
+        If dFecha > Date Then
+            If sCatRow = sCat And sProvRow = sProv Then
+                If InStr(1, sDescRow, "(mensual)") > 0 Then
+                    rngRow.Delete
+                End If
+            End If
+        End If
+    Next i
+    
+    MsgBox "Mensualidad cancelada (futuras entradas borradas).", vbInformation
+End Sub
+
+' ----------------------------------------------------------------------------------
+' (FUNCIÓN AUXILIAR) ConvertirDecimal: reemplaza '.' por el separador local
+' ----------------------------------------------------------------------------------
+Private Function ConvertirDecimal(txt As MSForms.TextBox) As Currency
+    Dim valorTexto As String
+    valorTexto = txt.Value
+    
+    ' Reemplazamos '.' por el separador decimal (p.ej., ',')
+    valorTexto = Replace(valorTexto, ".", Application.International(xlDecimalSeparator))
+    
+    If valorTexto = "" Then valorTexto = "0"
+    
+    ConvertirDecimal = CCur(valorTexto)
+End Function
+
+' ----------------------------------------------------------------------------------
+' GenerarReferencia: Crea la referencia SIGLA-YY-###
+' ----------------------------------------------------------------------------------
+Private Function GenerarReferencia(ByVal sSubCat As String) As String
+    Dim strSIGLA As String
+    strSIGLA = ObtenerSIGLAdeSubcategoria(sSubCat)
+    If strSIGLA = "" Then strSIGLA = "UNK"
+    
+    Dim strYY As String
+    strYY = Right(Year(Date), 2) ' p.ej. 2025 => "25"
+    
+    Dim ultimoNum As Long
+    ultimoNum = BuscarUltimoCorrelativo(strSIGLA, strYY)
+    ultimoNum = ultimoNum + 1
+    
+    Dim strNumFormateado As String
+    strNumFormateado = Format(ultimoNum, "000")
+    
+    GenerarReferencia = strSIGLA & "-" & strYY & "-" & strNumFormateado
+End Function
+
+' ----------------------------------------------------------------------------------
+' ObtenerSIGLAdeSubcategoria: lee la columna 5 de tblCategory
+' ----------------------------------------------------------------------------------
+Private Function ObtenerSIGLAdeSubcategoria(ByVal sSubCat As String) As String
+    Dim wsCat As Worksheet
+    Set wsCat = ThisWorkbook.Worksheets("CATEGORY")
+    
+    Dim loCat As ListObject
+    Set loCat = wsCat.ListObjects("tblCategory")
+    
+    If loCat.DataBodyRange Is Nothing Then Exit Function
+    
+    Dim rngData As Range
+    Set rngData = loCat.DataBodyRange
+    
+    Dim i As Long
+    For i = 1 To rngData.Rows.Count
+        ' 1=Tipo, 2=Contexto, 3=Categoría, 4=Subcategoría, 5=SIGLA
+        If rngData.Cells(i, 4).Value = sSubCat Then
+            ObtenerSIGLAdeSubcategoria = rngData.Cells(i, 5).Value
+            Exit For
+        End If
+    Next i
+End Function
+
+' ----------------------------------------------------------------------------------
+' BuscarUltimoCorrelativo: escanea DBE para ver el ### más alto
+' ----------------------------------------------------------------------------------
+Private Function BuscarUltimoCorrelativo(ByVal sSIGLA As String, ByVal sYY As String) As Long
+    Dim ws As Worksheet
+    Set ws = ThisWorkbook.Worksheets("DBE")
+    
+    Dim loDBE As ListObject
+    Set loDBE = ws.ListObjects("tblDBE")
+    
+    If loDBE.DataBodyRange Is Nothing Then
+        BuscarUltimoCorrelativo = 0
+        Exit Function
+    End If
+    
+    Dim rngData As Range
+    Set rngData = loDBE.DataBodyRange
+    
+    Dim maxNum As Long
+    maxNum = 0
+    
+    Dim i As Long
+    For i = 1 To rngData.Rows.Count
+        Dim sRef As String
+        sRef = rngData.Cells(i, 2).Value
+        
+        If Left(sRef, Len(sSIGLA & "-" & sYY)) = sSIGLA & "-" & sYY Then
+            Dim arrSplit As Variant
+            arrSplit = Split(sRef, "-")
+            If UBound(arrSplit) = 2 Then
+                Dim numParte As Long
+                numParte = Val(arrSplit(2))
+                If numParte > maxNum Then maxNum = numParte
+            End If
+        End If
+    Next i
+    
+    BuscarUltimoCorrelativo = maxNum
+End Function
+
+' ----------------------------------------------------------------------------------
+' GenerarMensualidadesDBE: crea las líneas para los meses siguientes
+' ----------------------------------------------------------------------------------
+Private Sub GenerarMensualidadesDBE( _
+    ByVal dFechaBase As Date, _
+    ByVal sSubCat As String, _
+    ByVal sCat As String, _
+    ByVal sProveedor As String, _
+    ByVal cPrecioSinIVA As Currency, _
+    ByVal sngIVA As Single, _
+    ByVal sngAfectado As Single, _
+    ByVal sDesc As String)
+    
+    Dim anio As Long
+    anio = Year(dFechaBase)
+    
+    Dim mesActual As Long
+    mesActual = Month(dFechaBase)
+    
+    Dim dia As Long
+    dia = Day(dFechaBase)
+    
+    Dim wsDBE As Worksheet
+    Set wsDBE = ThisWorkbook.Worksheets("DBE")
+    
+    Dim loDBE As ListObject
+    Set loDBE = wsDBE.ListObjects("tblDBE")
+    
+    Dim m As Long
+    For m = mesActual + 1 To 12
+        ' Creamos la fecha para el mismo día en el mes m
+        ' Ojo con días 31, etc.
+        Dim dNueva As Date
+        On Error Resume Next
+        dNueva = DateSerial(anio, m, dia)
+        On Error GoTo 0
+        
+        ' Nueva referencia para este mes
+        Dim sRefNuevo As String
+        sRefNuevo = GenerarReferencia(sSubCat)
+        
+        ' Calcular parte afectada
+        Dim cPrecioAfectado As Currency
+        cPrecioAfectado = cPrecioSinIVA * sngAfectado
+        
+        Dim cIVA As Currency
+        cIVA = cPrecioAfectado * sngIVA
+        
+        Dim cTotalAfectado As Currency
+        cTotalAfectado = cPrecioAfectado + cIVA
+        
+        Dim lrEmp As ListRow
+        Set lrEmp = loDBE.ListRows.Add
+        With lrEmp.Range
+            .Cells(1, 1).Value = dNueva
+            .Cells(1, 2).Value = sRefNuevo
+            .Cells(1, 3).Value = sCat
+            .Cells(1, 4).Value = sProveedor
+            .Cells(1, 5).Value = cPrecioAfectado
+            .Cells(1, 6).Value = sngIVA
+            .Cells(1, 7).Value = cIVA
+            .Cells(1, 8).Value = cTotalAfectado
+            .Cells(1, 9).Value = sngAfectado
+            .Cells(1, 10).Value = sDesc & " (mensual)"
+        End With
+        
+        If sngAfectado < 1 Then
+            Dim sngRestante As Single
+            sngRestante = 1 - sngAfectado
+            
+            Dim cPrecioRest As Currency
+            cPrecioRest = cPrecioSinIVA * sngRestante
+            
+            Dim cIVARest As Currency
+            cIVARest = cPrecioRest * sngIVA
+            
+            Dim cTotalRest As Currency
+            cTotalRest = cPrecioRest + cIVARest
+            
+            Dim lrEmp2 As ListRow
+            Set lrEmp2 = loDBE.ListRows.Add
+            With lrEmp2.Range
+                .Cells(1, 1).Value = dNueva
+                .Cells(1, 2).Value = sRefNuevo
+                .Cells(1, 3).Value = sCat
+                .Cells(1, 4).Value = sProveedor
+                .Cells(1, 5).Value = cPrecioRest
+                .Cells(1, 6).Value = sngIVA
+                .Cells(1, 7).Value = cIVARest
+                .Cells(1, 8).Value = cTotalRest
+                .Cells(1, 9).Value = sngRestante
+                .Cells(1, 10).Value = sDesc & " (mensual-restante)"
+            End With
+        End If
+    Next m
+End Sub
